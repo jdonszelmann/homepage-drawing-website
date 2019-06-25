@@ -1,13 +1,25 @@
 print = console.log
 
 let socket;
-let last;
-
 let history = []
 let online;
-let MAXHISTORY = 1000
+let MAXHISTORY = 1024;
+let context;
+let canvas;
+let drag = false;
+let mouseX = 0;
+let mouseY = 0;
+
+const map = (value, x1, y1, x2, y2) => (value - x1) * (y2 - x2) / (y1 - x1) + x2;
+
 //const address = "ws://192.168.1.42:4242"
 const address = "wss://drawserver.jonay2000.nl"
+
+const rtable = [255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 252.45, 244.79999999999998, 237.14999999999998, 229.49999999999997, 221.85, 214.2, 206.54999999999998, 198.9, 191.25, 183.6, 175.95, 168.29999999999998, 160.65000000000003, 153.00000000000003, 145.35000000000002, 137.70000000000002, 130.05, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 130.05000000000007, 137.70000000000002, 145.34999999999997, 152.99999999999991, 160.64999999999998, 168.30000000000004, 175.95, 183.59999999999994, 191.25, 198.90000000000006, 206.55, 214.19999999999996, 221.85000000000002, 229.50000000000009, 237.15000000000003, 244.79999999999998, 252.44999999999993, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0]
+const gtable = [127.5, 135.15, 142.8, 150.45, 158.1, 165.75, 173.39999999999998, 181.04999999999998, 188.7, 196.35, 204.0, 211.65, 219.29999999999998, 226.95000000000002, 234.60000000000002, 242.25, 249.9, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 247.35, 239.7, 232.04999999999998, 224.39999999999998, 216.74999999999997, 209.09999999999997, 201.45000000000002, 193.80000000000007, 186.15, 178.50000000000006, 170.85, 163.20000000000005, 155.54999999999995, 147.9, 140.24999999999994, 132.6, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5]
+
+const btable = [127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 127.5, 132.6, 140.24999999999994, 147.9, 155.54999999999995, 163.20000000000005, 170.85, 178.50000000000006, 186.15, 193.8, 201.45000000000002, 209.10000000000002, 216.75000000000003, 224.40000000000003, 232.04999999999998,
+239.7, 247.35, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 255.0, 249.9, 242.25000000000006, 234.6, 226.95000000000005, 219.29999999999995, 211.65, 203.99999999999994, 196.35, 188.69999999999993, 181.04999999999998, 173.40000000000003, 165.75000000000009, 158.10000000000002, 150.44999999999996, 142.8, 135.15000000000006]
 
 
 function checkhistory(){
@@ -16,13 +28,28 @@ function checkhistory(){
     }
 }
 
-function setup(){
+window.onload = function(){
+
+    canvas = document.createElement('canvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.style.zIndex = 8;
+    canvas.style.position = "absolute";
+    context = canvas.getContext("2d");
+    document.getElementsByTagName("body")[0].appendChild(canvas);
+    context.lineCap = "round"
+
     print(`connecting to ${address}`);
     socket = new WebSocket(address)
     socket.onerror = () => {
         alert("could not make connection");
         location.reload();
     };
+    socket.onclose = () => {
+        alert("lost connection connection");
+        location.reload();
+    };
+
 
 
     online = 1;
@@ -42,7 +69,7 @@ function setup(){
 
             if(data.command == "update"){
                 if([data.x,data.y,data.oldx,data.oldy,data.color].some((x) => x < 0)){
-                    print("dropping zero");
+                    //print("dropping zero");
                     return;
                 }
     
@@ -50,118 +77,141 @@ function setup(){
                 online = data.numonline;
          
                 if([data.x,data.y,data.oldx,data.oldy].some((x) => x < 0 || x > 100)){
-                    print("dropping invalid input")
+                    //print("dropping invalid input")
                     return;
                 }
     
-                colorMode(HSB,100);
-                strokeWeight(5);
-             
-                stroke(data.color % 100, 50, 100)
-                line(
-                    map(data.x,0,100,0,windowWidth),
-                    map(data.y,0,100,0,windowHeight),
-                    map(data.oldx,0,100,0,windowWidth),
-                    map(data.oldy,0,100,0,windowHeight), 
+                          
+                context.strokeStyle = `rgb(${rtable[data.color]},${gtable[data.color]},${btable[data.color]})`
+                context.lineWidth = 5;
+                context.beginPath();
+                context.moveTo(
+                    map(data.x,0,100,0,canvas.width),
+                    map(data.y,0,100,0,canvas.height),
+                );
+                context.lineTo(
+                    map(data.oldx,0,100,0,canvas.width),
+                    map(data.oldy,0,100,0,canvas.height), 
                 )
-                colorMode(RGB);
-
-
+                context.stroke();
+   
                 history.push([data.x,data.y,data.oldx,data.oldy,data.color])
-                redraw();
+                update_screen();
             }else if(data.command == "history"){
                 online = data.numonline;
                
                 history = data.history
-                redraw();
+                update_screen();
             }
         }catch(e){
             print(`an error occured`, e);
             return;
         }
     }
+}
+
+function drawHistory(){
+    context.lineWidth = 5;
+    for(const i of history){  
+        context.strokeStyle =`rgb(${rtable[i[4]]},${gtable[i[4]]},${btable[i[4]]})`
+        context.beginPath();
+        context.moveTo(
+            map(i[0],0,100,0,canvas.width),
+            map(i[1],0,100,0,canvas.height),
+        );
+        context.lineTo(
+            map(i[2],0,100,0,canvas.width),
+            map(i[3],0,100,0,canvas.height), 
+        );
+        context.stroke();
+   } 
+}
+
+function update_screen(){
+    window.requestAnimationFrame(() => {
+        context.fillStyle = "rgb(51,51,51)";
+        context.fillRect(0, 0, canvas.width,canvas.height);
+
+        drawHistory();
+
+        context.fillStyle = "white";
+        context.font = "14px Arial";
+        context.fillText(`There are currently ${online} players online.`, 20, 20);
     
-    createCanvas(windowWidth,windowHeight);
-    background(51);
-
-    frameRate(0);
-    last = createVector(-1,-1);
-
-    noLoop();
+        checkhistory();
+    })
 }
 
-function redrawHistory(){
-    colorMode(HSB,100);
-    strokeWeight(5);
-
-    for(let i of history){    
-        let [x,y,oldx,oldy,h] = i;
-        stroke(h % 100, 50, 100)
-        line(
-            map(x,0,100,0,windowWidth),
-            map(y,0,100,0,windowHeight),
-            map(oldx,0,100,0,windowWidth),
-            map(oldy,0,100,0,windowHeight), 
-        )
-    }
-    colorMode(RGB);
-}
-
-function draw(){
-    background(51);
-
-    redrawHistory();
-
-    fill(255);
-    noStroke(255);
-    textSize(14);
-    text(`There are currently ${online} players online.`,20,20);
-    
-    checkhistory();
-}
-
-async function mouseReleased(){
-    last = createVector(-1,-1);
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
     if (socket.readyState !== WebSocket.OPEN){
-        return redraw();    
+        return update_screen();    
+    }
+
+    socket.send(JSON.stringify({
+        command: "update",
+        x: -1,
+        y: -1
+    }));
+
+    update_screen();
+
+}, false)
+
+document.addEventListener('mouseup',onrelease, false);
+document.addEventListener('mousedown', () => drag = true, false);
+document.addEventListener('mousemove', onmousemove, false);
+window.addEventListener('touchmove', ontouchmove, false);
+window.addEventListener('touchend', onrelease, false);
+
+function getTouchPos(canvasDom, touchEvent) {
+    var rect = canvasDom.getBoundingClientRect();
+    return [
+        touchEvent.touches[0].clientX - rect.left,
+        touchEvent.touches[0].clientY - rect.top
+    ];
+}
+
+function ontouchmove(e){
+    [mouseX,mouseY] = getTouchPos(canvas,e);
+    handlemove();
+}
+
+function onrelease(){
+    if (socket.readyState !== WebSocket.OPEN){
+        return update_screen();    
     } 
 
-    await socket.send(JSON.stringify({
+    socket.send(JSON.stringify({
         command: "update",
         x: -1,
         y: -1
     }));
 
-    redraw();
+     update_screen();
+
+    drag = false
 }
 
-async function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
-
+function handlemove(){
     if (socket.readyState !== WebSocket.OPEN){
-        return redraw();    
-    }
-
-    await socket.send(JSON.stringify({
-        command: "update",
-        x: -1,
-        y: -1
-    }));
-
-    redraw();
-}
-
-async function mouseDragged() {
-
-    if (socket.readyState !== WebSocket.OPEN){
-        alert("still connecting");
+        ////alert("still connecting\n please wait or reload the page.");
         return
     }
-
-    await socket.send(JSON.stringify({
+    
+    socket.send(JSON.stringify({
         command: "update",
-        x: map(mouseX,0,windowWidth,0,100),
-        y: map(mouseY,0,windowHeight,0,100)
+        x: map(mouseX,-1,canvas.width,0,100),
+        y: map(mouseY,-1,canvas.height,0,100)
     }));
+}
+
+function onmousemove(e){
+    if(drag){
+        mouseX = e.pageX;
+        mouseY = e.pageY;
+        handlemove(e);
+    }
 }

@@ -3,9 +3,10 @@ import asyncio
 import random
 import collections
 import json
+import sys
 
 class Client:
-    history = collections.deque(maxlen=1000)
+    history = collections.deque(maxlen=1024)
     allsockets = {}
 
     def __init__(self,socket,old, color):
@@ -44,18 +45,21 @@ async def messagehandler(message, sender):
             if x == -1 or y == -1: 
                 return
 
-            for s in Client.allsockets.values():
-                await s.socket.send(json.dumps(
-                    {
-                        "command":"update",
-                        "x":x,
-                        "y":y,
-                        "oldx":oldx,
-                        "oldy":oldy,
-                        "color":sender.color,
-                        "numonline":len(Client.allsockets)
-                    }
-                ))
+            for k,s in Client.allsockets.items():
+                try:
+                    await s.socket.send(json.dumps(
+                        {
+                            "command":"update",
+                            "x":x,
+                            "y":y,
+                            "oldx":oldx,
+                            "oldy":oldy,
+                            "color":sender.color,
+                            "numonline":len(Client.allsockets)
+                        }
+                    ))
+                except:
+                    del Client.allsockets[k]
 
             if oldx != -1 or oldy != -1:
                 Client.history.append((x,y,oldx,oldy,sender.color))
@@ -80,7 +84,12 @@ async def handle(websocket, path):
     Client.remove(websocket)
 
 print("starting")
+if len(sys.argv) == 2:
+    port = sys.argv[1]
+else:
+    port = 80
+
 asyncio.get_event_loop().run_until_complete(
-    websockets.serve(handle, '0.0.0.0', 80)
+    websockets.serve(handle, '0.0.0.0', port)
 )
 asyncio.get_event_loop().run_forever()

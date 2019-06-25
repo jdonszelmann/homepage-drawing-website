@@ -12,6 +12,8 @@ services:
       - traefik.frontend.redirect.replacement=http$$1://$$2
       - traefik.frontend.redirect.permanent=true
       - traefik.frontend.port=80
+
+    restart: unless-stopped
   server:
     container_name: jonay2000-homepage-server
     image: jonay2000/collabdraw-server:latest
