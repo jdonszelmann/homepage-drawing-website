@@ -215,7 +215,7 @@ fn main() {
         .start()
         .unwrap();
 
-    let port = 4242;
+    let port = 80;
     let address = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
     let capacity = 1024;
     let blacklist = Arc::new(Mutex::new(HashSet::new()));

@@ -19,12 +19,13 @@ services:
     env_file: ./settings.env
     networks:
       - web
+
     labels:
       - traefik.frontend.rule=Host:drawserver.jonay2000.nl
       - traefik.frontend.port=80
     volumes:
-      - ./config:/config
-      - ./logs:/logs
+      - ./server/config:/config
+      - ./server/logs:/logs
     restart: unless-stopped
 
 networks:

@@ -1,5 +1,18 @@
 FROM rust:latest
-COPY . ./
-RUN cargo install --path
+RUN USER=root cargo new drawserver
+WORKDIR /drawserver
 
-CMD ["cargo run"]
+COPY ./Cargo.lock ./Cargo.lock
+COPY ./Cargo.toml ./Cargo.toml
+
+RUN cargo build --release
+RUN rm src/*.rs
+
+COPY ./src ./src
+
+RUN rm ./target/release/deps/drawserver*
+RUN cargo build --release
+
+EXPOSE 80
+CMD ["./target/release/drawserver"]
+#CMD ["sleep","10000"]
