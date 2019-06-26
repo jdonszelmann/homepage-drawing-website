@@ -33,7 +33,7 @@ struct Line(
     pub u8,  // color
 );
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Client{
     pub connection_id: u32,
     pub oldx: f64,
@@ -121,12 +121,14 @@ impl ws::Handler for Server {
 
         let conn_id = self.channel.connection_id();
         let client = Client::new(conn_id, ip);
+        let client2 = client.clone();
         self.clients.lock().or(Err(Box::new(LockError)))?.insert(conn_id, client);
 
         info!("New connection from {}", ip);
 
         let response = json!({
             "command": "history",
+            "color": client2.color,
             "numonline": self.clients.lock().or(Err(Box::new(LockError)))?.len(),
             "capacity": self.capacity,
             "history": self.history.lock().or(Err(Box::new(LockError)))?.to_vec(),
@@ -272,9 +274,21 @@ fn main() {
     thread::spawn(move ||{
         loop{
             thread::sleep(Duration::from_secs(5));
-            let blacklistcontents = fs::read_to_string(root.clone() + "/config/blacklist").expect("Couldn't read file");
-            let readonlylistcontents = fs::read_to_string(root.clone() + "/config/readonlylist").expect("Couldn't read file");
-
+            let blacklistcontents = match fs::read_to_string(root.clone() + "/config/blacklist"){
+                Err(_) => {
+                    error!("couldn't read blacklist file");
+                    continue;
+                }
+                Ok(i) => i,
+            };
+            let readonlylistcontents = match fs::read_to_string(root.clone() + "/config/readonlylist"){
+                Err(_) => {
+                    error!("couldn't read readonlylist file");
+                    continue;
+                }
+                Ok(i) => i,
+            };
+            
             let mut blacklock = match inner_blacklist.lock(){
                 Ok(i) => i,
                 Err(_) => {
@@ -298,6 +312,13 @@ fn main() {
                     continue;
                 }
             };
+
+            info!("online:");
+            info!("--------------");
+            for (k,v) in clientlock.iter(){
+                info!("{} with color {}",v.ip, v.color);   
+            }
+            info!("--------------");
 
             blacklock.clear();
             for addr in blacklistcontents.split("\n"){
