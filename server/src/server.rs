@@ -14,7 +14,7 @@ use crate::JsonError;
 pub struct Server {
     channel: ws::Sender,
     whitelist: Arc<Mutex<HashSet<IpAddr>>>,
-    readonlylist: Arc<Mutex<HashSet<IpAddr>>>,
+    blacklist: Arc<Mutex<HashSet<IpAddr>>>,
     history: Arc<Mutex<RingBuffer<Line>>>,
     clients: Arc<Mutex<HashMap<u32, Client>>>,
     capacity: usize
@@ -22,7 +22,7 @@ pub struct Server {
 
 impl Server {
 
-    pub fn new(whitelist: Arc<Mutex<HashSet<IpAddr>>>, history: Arc<Mutex<RingBuffer<Line>>>, clients: Arc<Mutex<HashMap<u32, Client>>>, capacity: usize, readonlylist: Arc<Mutex<HashSet<IpAddr>>>, channel: ws::Sender) -> Self{
+    pub fn new(whitelist: Arc<Mutex<HashSet<IpAddr>>>, history: Arc<Mutex<RingBuffer<Line>>>, clients: Arc<Mutex<HashMap<u32, Client>>>, capacity: usize, blacklist: Arc<Mutex<HashSet<IpAddr>>>, channel: ws::Sender) -> Self{
 
         return Self{
             channel,
@@ -30,7 +30,7 @@ impl Server {
             history,
             clients,
             capacity,
-            readonlylist,
+            blacklist,
         }
     }
 }
@@ -66,9 +66,9 @@ impl ws::Handler for Server {
             }
         };
 
-        if !self.whitelist.lock().or(Err(Box::new(LockError)))?.contains(&ip){
+        if self.blacklist.lock().or(Err(Box::new(LockError)))?.contains(&ip){
             self.channel.close(ws::CloseCode::Policy)?;
-            warn!("A non whitelisted ip ({}) tried to connect", ip);
+            warn!("A blacklisted ip ({}) tried to connect", ip);
             return Ok(());
         }
 
@@ -120,7 +120,7 @@ impl ws::Handler for Server {
             }
         };
 
-        if self.readonlylist.lock().or(Err(Box::new(LockError)))?.contains(&client.ip){
+        if !self.whitelist.lock().or(Err(Box::new(LockError)))?.contains(&client.ip){
             return Ok(());
         }
 

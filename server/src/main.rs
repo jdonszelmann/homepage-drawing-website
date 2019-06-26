@@ -52,7 +52,7 @@ fn main() {
     let address = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
     let capacity = 1024;
     let whitelist = Arc::new(Mutex::new(HashSet::new()));
-    let readonlylist = Arc::new(Mutex::new(HashSet::new()));
+    let blacklist = Arc::new(Mutex::new(HashSet::new()));
     let history = Arc::new(Mutex::new(RingBuffer::with_capacity(
         capacity
     )));
@@ -60,7 +60,7 @@ fn main() {
 
     let inner_whitelist = whitelist.clone();
     let inner_clients = clients.clone();
-    let inner_readonlylist = readonlylist.clone();
+    let inner_blacklist = blacklist.clone();
     thread::spawn(move ||{
         loop{
             thread::sleep(Duration::from_secs(5));
@@ -71,9 +71,9 @@ fn main() {
                 }
                 Ok(i) => i,
             };
-            let readonlylistcontents = match fs::read_to_string(root.clone() + "/config/readonlylist"){
+            let blacklistcontents = match fs::read_to_string(root.clone() + "/config/blacklist"){
                 Err(_) => {
-                    error!("couldn't read readonlylist file");
+                    error!("couldn't read blacklist file");
                     continue;
                 }
                 Ok(i) => i,
@@ -95,10 +95,10 @@ fn main() {
                 }
             };
 
-            let mut readonlylock = match inner_readonlylist.lock(){
+            let mut blacklock = match inner_blacklist.lock(){
                 Ok(i) => i,
                 Err(_) => {
-                    error!("failed to lock readonlylist.");
+                    error!("failed to lock blacklist.");
                     continue;
                 }
             };
@@ -118,8 +118,8 @@ fn main() {
                 whitelock.insert(address);
             }
 
-            readonlylock.clear();
-            for addr in readonlylistcontents.split("\n"){
+            blacklock.clear();
+            for addr in blacklistcontents.split("\n"){
                 if addr.is_empty() || addr.trim_start().starts_with("#"){
                     continue;
                 }
@@ -130,25 +130,25 @@ fn main() {
                         continue;
                     }
                 };
-                readonlylock.insert(address);
+                blacklock.insert(address);
             }
 
-            let whitelisted: Vec<_> = clientlock
+            let blacklisted: Vec<_> = clientlock
                 .iter()
-                .filter(|&(_, v)| !whitelock.contains(&v.ip) )
+                .filter(|&(_, v)| blacklock.contains(&v.ip) )
                 .map(|(k, _) | k.clone())
                 .collect();
-            for value in whitelisted {
+            for value in blacklisted {
                 clientlock.remove(&value);
             }
-            drop(whitelock);
+            drop(blacklock);
             drop(clientlock);
-            drop(readonlylock);
+            drop(whitelock);
         }
     });
 
     ws::Builder::new()
-        .build(|out : ws::Sender| Server::new(whitelist.clone(),history.clone(),clients.clone(), capacity.clone(), readonlylist.clone(), out))
+        .build(|out : ws::Sender| Server::new(whitelist.clone(),history.clone(),clients.clone(), capacity.clone(), blacklist.clone(), out))
         .unwrap()
         .listen(address)
         .unwrap();
