@@ -81,6 +81,7 @@ impl ws::Handler for Server {
 
 
     fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()>{
+        warn!("{:?}",shake.request.headers());
         let ip = match shake.request.client_addr()? {
             Some(i) => match i.parse(){
                 Ok(i) => i,
