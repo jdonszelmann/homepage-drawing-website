@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use std::fs;
+use std::env;
 
 create_error!(JsonError, "couldn't deserialize");
 create_error!(LockError, "couldn't lock");
@@ -77,41 +78,53 @@ impl Server {
 
 impl ws::Handler for Server {
 
+
+
     fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()>{
-        match shake.peer_addr{
-            Some(i) => {
-                if self.blacklist.lock().or(Err(Box::new(LockError)))?.contains(&i.ip()){
-                    self.channel.close(ws::CloseCode::Policy)?;
-                    warn!("A blacklisted ip ({}) tried to connect", i);
+        let ip = match shake.request.client_addr()? {
+            Some(i) => match i.parse(){
+                Ok(i) => i,
+                Err(_) => {
+                    error!("couldn't parse address {}",i);
                     return Ok(());
                 }
-
-                let conn_id = self.channel.connection_id();
-                let client = Client::new(conn_id, i.ip());
-                self.clients.lock().or(Err(Box::new(LockError)))?.insert(conn_id, client);
-
-                info!("New connection from {}", i.ip());
-
-                let response = json!({
-                    "command": "history",
-                    "numonline": self.clients.lock().or(Err(Box::new(LockError)))?.len(),
-                    "capacity": self.capacity,
-                    "history": self.history.lock().or(Err(Box::new(LockError)))?.to_vec(),
-                });
-
-                match self.channel.send(response.to_string()){
-                    Ok(_) => (),
-                    Err(i) => {
-                        error!("An error occurred during the sending");
-                        return Err(i);
-                    }
-                };
             },
-            None => {
-                self.channel.close(ws::CloseCode::Error)?;
-                warn!("Someone connected without peer address");
+            None => match shake.peer_addr{
+                Some(i) => i.ip(),
+                None => {
+                    self.channel.close(ws::CloseCode::Error)?;
+                    warn!("Someone connected without peer address");
+                    return Ok(());
+                }
             }
+        };
+
+        if self.blacklist.lock().or(Err(Box::new(LockError)))?.contains(&ip){
+            self.channel.close(ws::CloseCode::Policy)?;
+            warn!("A blacklisted ip ({}) tried to connect", ip);
+            return Ok(());
         }
+
+        let conn_id = self.channel.connection_id();
+        let client = Client::new(conn_id, ip);
+        self.clients.lock().or(Err(Box::new(LockError)))?.insert(conn_id, client);
+
+        info!("New connection from {}", ip);
+
+        let response = json!({
+            "command": "history",
+            "numonline": self.clients.lock().or(Err(Box::new(LockError)))?.len(),
+            "capacity": self.capacity,
+            "history": self.history.lock().or(Err(Box::new(LockError)))?.to_vec(),
+        });
+
+        match self.channel.send(response.to_string()){
+            Ok(_) => (),
+            Err(i) => {
+                error!("An error occurred during the sending");
+                return Err(i);
+            }
+        };
 
         Ok(())
     }
@@ -207,6 +220,21 @@ impl ws::Handler for Server {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let root;
+    let port: u16;
+    if args.len() > 1 {
+        root = args[1].to_owned();
+    }else{
+        root = String::from("/");
+    }
+    if args.len() > 2 {
+        port = args[2].parse().expect("Second argument should be port");
+
+    }else{
+        port = 80;
+    }
+
     Logger::with_env_or_str("info, ws = warn")
         .log_to_file()
         .duplicate_to_stderr(Duplicate::Info)
@@ -215,7 +243,6 @@ fn main() {
         .start()
         .unwrap();
 
-    let port = 80;
     let address = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
     let capacity = 1024;
     let blacklist = Arc::new(Mutex::new(HashSet::new()));
@@ -231,8 +258,8 @@ fn main() {
     thread::spawn(move ||{
         loop{
             thread::sleep(Duration::from_secs(5));
-            let blacklistcontents = fs::read_to_string("/config/blacklist").expect("Couldn't read file");
-            let readonlylistcontents = fs::read_to_string("/config/readonlylist").expect("Couldn't read file");
+            let blacklistcontents = fs::read_to_string(root.clone() + "/config/blacklist").expect("Couldn't read file");
+            let readonlylistcontents = fs::read_to_string(root.clone() + "/config/readonlylist").expect("Couldn't read file");
 
             let mut blacklock = match inner_blacklist.lock(){
                 Ok(i) => i,
