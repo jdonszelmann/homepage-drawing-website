@@ -20,6 +20,10 @@ use std::env;
 create_error!(JsonError, "couldn't deserialize");
 create_error!(LockError, "couldn't lock");
 
+fn parse_ip(data: &Vec<u8>) -> Option<IpAddr>{
+    String::from_utf8_lossy(data.as_slice()).parse().ok()
+}
+
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 struct Line(
     pub f64, // x
@@ -81,21 +85,30 @@ impl ws::Handler for Server {
 
 
     fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()>{
-        warn!("{:?}",shake.request.headers());
-        let ip = match shake.request.client_addr()? {
-            Some(i) => match i.parse(){
-                Ok(i) => i,
-                Err(_) => {
-                    error!("couldn't parse address {}",i);
-                    return Ok(());
-                }
-            },
-            None => match shake.peer_addr{
-                Some(i) => i.ip(),
-                None => {
-                    self.channel.close(ws::CloseCode::Error)?;
-                    warn!("Someone connected without peer address");
-                    return Ok(());
+        let mut tmp_ip = None;
+
+        for (name, value) in shake.request.headers(){
+            if name == &String::from("X-Real-Ip"){
+                tmp_ip = parse_ip(value);
+            }
+        }
+        let ip = match tmp_ip{
+            Some(i) => i,
+            None => match shake.request.client_addr()? {
+                Some(i) => match i.parse() {
+                    Ok(i) => i,
+                    Err(_) => {
+                        error!("couldn't parse address {}", i);
+                        return Ok(());
+                    }
+                },
+                None => match shake.peer_addr {
+                    Some(i) => i.ip(),
+                    None => {
+                        self.channel.close(ws::CloseCode::Error)?;
+                        warn!("Someone connected without peer address");
+                        return Ok(());
+                    }
                 }
             }
         };
