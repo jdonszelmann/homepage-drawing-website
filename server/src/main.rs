@@ -2,6 +2,7 @@ mod error;
 mod line;
 mod server;
 mod client;
+mod rest;
 
 use ringbuffer;
 use ringbuffer::RingBuffer;
@@ -41,7 +42,7 @@ fn main() {
         port = 80;
     }
 
-    Logger::with_env_or_str("info, ws = warn")
+    Logger::with_env_or_str("info, ws = warn, rocket = warn")
         .log_to_file()
         .duplicate_to_stderr(Duplicate::Info)
         .directory("/logs")
@@ -49,7 +50,8 @@ fn main() {
         .start()
         .unwrap();
 
-    let address = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
+    let socketaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
+    let webaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port + 1));
     let capacity = 1024;
     let whitelist = Arc::new(Mutex::new(HashSet::new()));
     let blacklist = Arc::new(Mutex::new(HashSet::new()));
@@ -61,17 +63,23 @@ fn main() {
     let inner_whitelist = whitelist.clone();
     let inner_clients = clients.clone();
     let inner_blacklist = blacklist.clone();
+
+    let whitelistname  = root.clone() + "/config/whitelist";
+    let blacklistname  = root.clone() + "/config/blacklist";
+
+    let whitelistnametmp = whitelistname.clone();
+    let blacklistnametmp = blacklistname.clone();
     thread::spawn(move ||{
         loop{
             thread::sleep(Duration::from_secs(5));
-            let whitelistcontents = match fs::read_to_string(root.clone() + "/config/whitelist"){
+            let whitelistcontents = match fs::read_to_string(whitelistnametmp.clone()){
                 Err(_) => {
                     error!("couldn't read whitelist file");
                     continue;
                 }
                 Ok(i) => i,
             };
-            let blacklistcontents = match fs::read_to_string(root.clone() + "/config/blacklist"){
+            let blacklistcontents = match fs::read_to_string(blacklistnametmp.clone()){
                 Err(_) => {
                     error!("couldn't read blacklist file");
                     continue;
@@ -147,9 +155,14 @@ fn main() {
         }
     });
 
+    let passwordsfilename = root.clone() + "/config/passwords";
+    thread::spawn(move ||{
+        rest::main(webaddress, passwordsfilename.clone(), whitelistname.clone(), blacklistname.clone());
+    });
+
     ws::Builder::new()
         .build(|out : ws::Sender| Server::new(whitelist.clone(),history.clone(),clients.clone(), capacity.clone(), blacklist.clone(), out))
         .unwrap()
-        .listen(address)
+        .listen(socketaddress)
         .unwrap();
 }
