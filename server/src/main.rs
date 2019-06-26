@@ -1,238 +1,28 @@
 mod error;
+mod line;
+mod server;
+mod client;
 
 use ringbuffer;
 use ringbuffer::RingBuffer;
 use ws;
-use log::{info, warn, error, debug};
-use serde::{Serialize,Deserialize};
-use serde_json::{Value,json};
+use log::error;
 use std::collections::{HashMap, HashSet};
-use rand::Rng;
 use flexi_logger::{Logger, opt_format, Duplicate};
-use std::mem;
 use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use std::fs;
 use std::env;
+use crate::server::Server;
+use crate::client::Client;
 
 create_error!(JsonError, "couldn't deserialize");
 create_error!(LockError, "couldn't lock");
 
 fn parse_ip(data: &Vec<u8>) -> Option<IpAddr>{
     String::from_utf8_lossy(data.as_slice()).parse().ok()
-}
-
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
-struct Line(
-    pub f64, // x
-    pub f64, // y
-    pub f64, // oldx
-    pub f64, // oldy
-    pub u8,  // color
-);
-
-#[derive(Debug, Copy, Clone)]
-struct Client{
-    pub connection_id: u32,
-    pub oldx: f64,
-    pub oldy: f64,
-    pub color: u8,
-    pub ip: IpAddr,
-}
-
-impl Client{
-    fn new(connection_id: u32, ip: IpAddr) -> Self{
-        let mut rng = rand::weak_rng();
-
-        Client{
-            connection_id,
-            oldx: -1f64,
-            oldy: -1f64,
-            color: rng.gen_range(0,100),
-            ip,
-        }
-    }
-}
-
-struct Server {
-    channel: ws::Sender,
-    blacklist: Arc<Mutex<HashSet<IpAddr>>>,
-    readonlylist: Arc<Mutex<HashSet<IpAddr>>>,
-    history: Arc<Mutex<RingBuffer<Line>>>,
-    clients: Arc<Mutex<HashMap<u32, Client>>>,
-    capacity: usize
-}
-
-impl Server {
-
-    pub fn new(blacklist: Arc<Mutex<HashSet<IpAddr>>>, history: Arc<Mutex<RingBuffer<Line>>>, clients: Arc<Mutex<HashMap<u32, Client>>>, capacity: usize, readonlylist: Arc<Mutex<HashSet<IpAddr>>>, channel: ws::Sender) -> Self{
-
-        return Self{
-            channel,
-            blacklist,
-            history,
-            clients,
-            capacity,
-            readonlylist,
-        }
-    }
-}
-
-impl ws::Handler for Server {
-
-
-
-    fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()>{
-        let mut tmp_ip = None;
-
-        for (name, value) in shake.request.headers(){
-            if name == &String::from("X-Real-Ip"){
-                tmp_ip = parse_ip(value);
-            }
-        }
-        let ip = match tmp_ip{
-            Some(i) => i,
-            None => match shake.request.client_addr()? {
-                Some(i) => match i.parse() {
-                    Ok(i) => i,
-                    Err(_) => {
-                        error!("couldn't parse address {}", i);
-                        return Ok(());
-                    }
-                },
-                None => match shake.peer_addr {
-                    Some(i) => i.ip(),
-                    None => {
-                        self.channel.close(ws::CloseCode::Error)?;
-                        warn!("Someone connected without peer address");
-                        return Ok(());
-                    }
-                }
-            }
-        };
-
-        if self.blacklist.lock().or(Err(Box::new(LockError)))?.contains(&ip){
-            self.channel.close(ws::CloseCode::Policy)?;
-            warn!("A blacklisted ip ({}) tried to connect", ip);
-            return Ok(());
-        }
-
-        let conn_id = self.channel.connection_id();
-        let client = Client::new(conn_id, ip);
-        let client2 = client.clone();
-        self.clients.lock().or(Err(Box::new(LockError)))?.insert(conn_id, client);
-
-        info!("New connection from {}", ip);
-
-        let response = json!({
-            "command": "history",
-            "color": client2.color,
-            "numonline": self.clients.lock().or(Err(Box::new(LockError)))?.len(),
-            "capacity": self.capacity,
-            "history": self.history.lock().or(Err(Box::new(LockError)))?.to_vec(),
-        });
-
-        match self.channel.send(response.to_string()){
-            Ok(_) => (),
-            Err(i) => {
-                error!("An error occurred during the sending");
-                return Err(i);
-            }
-        };
-
-        Ok(())
-    }
-
-    fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
-        debug!("{}",msg);
-
-        let conn_id = self.channel.connection_id();
-        let numonline = self.clients.lock().or(Err(Box::new(LockError)))?.len();
-
-        let mut clients = self.clients.lock().or(Err(Box::new(LockError)))?;
-        let client = match clients.get_mut(&conn_id){
-            Some(i) => i,
-            None => {
-                warn!("Found user that wasn't in client map. Kicking.");
-                match self.channel.close(ws::CloseCode::Abnormal){
-                    Ok(_) => (),
-                    Err(_) => {
-                        error!("couldn't close socket");
-                        return Ok(());
-                    }
-                };
-                return Ok(());
-            }
-        };
-
-        if self.readonlylist.lock().or(Err(Box::new(LockError)))?.contains(&client.ip){
-            return Ok(());
-        }
-
-        let data: Value = serde_json::from_str(msg.as_text()?)
-            .or(Err(Box::new(JsonError)))?;
-
-        let x = match data["x"].as_f64(){
-            Some(i) => i,
-            None => {
-                return Ok(warn!("Received malformed update data"));
-            }
-        };
-        let y = match data["y"].as_f64(){
-            Some(i) => i,
-            None => {
-                return Ok(warn!("Received malformed update data"));
-            }
-        };
-
-        let oldx = mem::replace(&mut client.oldx, x);
-        let oldy = mem::replace(&mut client.oldy, y);
-
-        if x < 0f64 || y < 0f64{
-            return Ok(());
-        }
-
-        let response = json!({
-            "command": "update",
-            "x":x,
-            "y":y,
-            "oldx":oldx,
-            "oldy":oldy,
-            "color":client.color,
-            "numonline":numonline,
-        });
-
-        self.channel.broadcast(response.to_string())?;
-
-        if oldx < 0f64 || oldy < 0f64{
-            return Ok(());
-        }
-
-        self.history.lock().or(Err(Box::new(LockError)))?.push(Line(
-            x,y,oldx,oldy,client.color
-        ));
-        Ok(())
-    }
-
-    fn on_close(&mut self, _code: ws::CloseCode, _reason: &str) {
-        let removed = match match self.clients.lock(){
-            Ok(i) => i,
-            Err(_) => {
-                error!("couldn't lock blacklist");
-                return;
-            }
-        }.remove(&self.channel.connection_id()){
-            Some(i) => i,
-            None => {
-                warn!("Lost connection from someone not in the client map (possibly due to blacklist)");
-                return;
-            }
-        };
-        info!("Dropping connection from {}", removed.ip);
-
-    }
 }
 
 fn main() {
@@ -261,22 +51,22 @@ fn main() {
 
     let address = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
     let capacity = 1024;
-    let blacklist = Arc::new(Mutex::new(HashSet::new()));
+    let whitelist = Arc::new(Mutex::new(HashSet::new()));
     let readonlylist = Arc::new(Mutex::new(HashSet::new()));
     let history = Arc::new(Mutex::new(RingBuffer::with_capacity(
         capacity
     )));
     let clients: Arc<Mutex<HashMap<u32, Client>>> =  Arc::new(Mutex::new(HashMap::new()));
 
-    let inner_blacklist = blacklist.clone();
+    let inner_whitelist = whitelist.clone();
     let inner_clients = clients.clone();
     let inner_readonlylist = readonlylist.clone();
     thread::spawn(move ||{
         loop{
             thread::sleep(Duration::from_secs(5));
-            let blacklistcontents = match fs::read_to_string(root.clone() + "/config/blacklist"){
+            let whitelistcontents = match fs::read_to_string(root.clone() + "/config/whitelist"){
                 Err(_) => {
-                    error!("couldn't read blacklist file");
+                    error!("couldn't read whitelist file");
                     continue;
                 }
                 Ok(i) => i,
@@ -289,10 +79,10 @@ fn main() {
                 Ok(i) => i,
             };
             
-            let mut blacklock = match inner_blacklist.lock(){
+            let mut whitelock = match inner_whitelist.lock(){
                 Ok(i) => i,
                 Err(_) => {
-                    error!("failed to lock blacklist.");
+                    error!("failed to lock whitelist.");
                     continue;
                 }
             };
@@ -313,15 +103,8 @@ fn main() {
                 }
             };
 
-            info!("online:");
-            info!("--------------");
-            for (k,v) in clientlock.iter(){
-                info!("{} with color {}",v.ip, v.color);   
-            }
-            info!("--------------");
-
-            blacklock.clear();
-            for addr in blacklistcontents.split("\n"){
+            whitelock.clear();
+            for addr in whitelistcontents.split("\n"){
                 if addr.is_empty() || addr.trim_start().starts_with("#"){
                     continue;
                 }
@@ -332,7 +115,7 @@ fn main() {
                         continue;
                     }
                 };
-                blacklock.insert(address);
+                whitelock.insert(address);
             }
 
             readonlylock.clear();
@@ -350,22 +133,22 @@ fn main() {
                 readonlylock.insert(address);
             }
 
-            let blacklisted: Vec<_> = clientlock
+            let whitelisted: Vec<_> = clientlock
                 .iter()
-                .filter(|&(_, v)| blacklock.contains(&v.ip) )
+                .filter(|&(_, v)| whitelock.contains(&v.ip) )
                 .map(|(k, _) | k.clone())
                 .collect();
-            for value in blacklisted {
+            for value in whitelisted {
                 clientlock.remove(&value);
             }
-            drop(blacklock);
+            drop(whitelock);
             drop(clientlock);
             drop(readonlylock);
         }
     });
 
     ws::Builder::new()
-        .build(|out : ws::Sender| Server::new(blacklist.clone(),history.clone(),clients.clone(), capacity.clone(), readonlylist.clone(), out))
+        .build(|out : ws::Sender| Server::new(whitelist.clone(),history.clone(),clients.clone(), capacity.clone(), readonlylist.clone(), out))
         .unwrap()
         .listen(address)
         .unwrap();
