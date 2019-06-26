@@ -68,7 +68,7 @@ impl ws::Handler for Server {
 
         if !self.whitelist.lock().or(Err(Box::new(LockError)))?.contains(&ip){
             self.channel.close(ws::CloseCode::Policy)?;
-            warn!("A whitelisted ip ({}) tried to connect", ip);
+            warn!("A non whitelisted ip ({}) tried to connect", ip);
             return Ok(());
         }
 
@@ -173,7 +173,7 @@ impl ws::Handler for Server {
         let removed = match match self.clients.lock(){
             Ok(i) => i,
             Err(_) => {
-                error!("couldn't lock whitelist");
+                error!("couldn't lock client");
                 return;
             }
         }.remove(&self.channel.connection_id()){

@@ -135,7 +135,7 @@ fn main() {
 
             let whitelisted: Vec<_> = clientlock
                 .iter()
-                .filter(|&(_, v)| whitelock.contains(&v.ip) )
+                .filter(|&(_, v)| !whitelock.contains(&v.ip) )
                 .map(|(k, _) | k.clone())
                 .collect();
             for value in whitelisted {
