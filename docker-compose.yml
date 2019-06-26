@@ -12,7 +12,6 @@ services:
       - traefik.frontend.redirect.replacement=http$$1://$$2
       - traefik.frontend.redirect.permanent=true
       - traefik.frontend.port=80
-
     restart: unless-stopped
   server:
     container_name: jonay2000-homepage-server
@@ -23,6 +22,9 @@ services:
     labels:
       - traefik.frontend.rule=Host:drawserver.jonay2000.nl
       - traefik.frontend.port=80
+    volumes:
+      - ./config:/config
+      - ./logs:/logs
     restart: unless-stopped
 
 networks:

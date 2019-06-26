@@ -1,0 +1,16 @@
+[package]
+name = "drawserver"
+version = "0.1.0"
+authors = ["Jonathan Donszelmann <jonabent@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ringbuffer = "0.1.1"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+ws = "0.8.1"
+log = "0.4.6"
+rand = "0.3"
+flexi_logger = "^0.13.2"

@@ -1,6 +1,5 @@
-FROM python:3.7-alpine
-RUN pip3 install websockets asyncio
+FROM rust:latest
 COPY . ./
-EXPOSE 80
+RUN cargo install --path
 
-CMD ["python3","main.py"]
+CMD ["cargo run"]
