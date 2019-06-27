@@ -59,7 +59,7 @@ fn main() {
 
     let socketaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
     let webaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), webport));
-    let capacity = 1024;
+    let capacity = 2048;
     let whitelist = Arc::new(Mutex::new(HashSet::new()));
     let blacklist = Arc::new(Mutex::new(HashSet::new()));
     let history = Arc::new(Mutex::new(RingBuffer::with_capacity(

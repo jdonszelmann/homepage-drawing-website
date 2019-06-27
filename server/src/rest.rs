@@ -130,6 +130,12 @@ fn routes(req: Request<Body>, _client: &Client<HttpConnector>, passwordsfile: St
                         Ok(i) => i,
                         Err(_) => return failure("write failure"),
                     };
+
+                    match file.write(b"\n".as_ref()){
+                        Ok(i) => i,
+                        Err(_) => return failure("write failure"),
+                    };
+
                     return success("");
                 }else{
                     return failure("Please give ?ip=xx.xx.xx.xx");
