@@ -164,7 +164,7 @@ fn main() {
 
     let passwordsfilename = root.clone() + "/config/passwords";
     thread::spawn(move ||{
-        rest::main(webaddress, passwordsfilename.clone(), whitelistname.clone(), blacklistname.clone());
+        rest::main(webaddress, passwordsfilename.clone(), whitelistname.clone(), blacklistname.clone(), history.clone());
     });
 
     ws::Builder::new()

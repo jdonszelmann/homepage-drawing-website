@@ -9,6 +9,9 @@ use url::Url;
 use log::{error, info};
 use std::fs::OpenOptions;
 use std::io::Write;
+use ringbuffer::RingBuffer;
+use crate::line::Line;
+use std::sync::{Arc, Mutex};
 
 type GenericError = Box<dyn std::error::Error + Send + Sync>;
 type ResponseFuture = Box<dyn Future<Item=Response<Body>, Error=GenericError> + Send>;
@@ -60,7 +63,7 @@ fn line_in_file(line: &String, filename: &String) -> bool{
     return false;
 }
 
-fn routes(req: Request<Body>, _client: &Client<HttpConnector>, passwordsfile: String, whitelist: String, blacklist: String) -> ResponseFuture {
+fn routes(req: Request<Body>, _client: &Client<HttpConnector>, passwordsfile: String, whitelist: String, blacklist: String, history: Arc<Mutex<RingBuffer<Line>>>) -> ResponseFuture {
 
     let auth: &str = match req.headers().get(AUTHORIZATION){
         Some(i) => {
@@ -210,7 +213,7 @@ fn routes(req: Request<Body>, _client: &Client<HttpConnector>, passwordsfile: St
     }
 }
 
-pub fn main(address: SocketAddr, passwords: String, whitelist: String, blacklist: String){
+pub fn main(address: SocketAddr, passwords: String, whitelist: String, blacklist: String, history: Arc<Mutex<RingBuffer<Line>>>){
 
     hyper::rt::run(future::lazy(move || {
 
@@ -223,11 +226,12 @@ pub fn main(address: SocketAddr, passwords: String, whitelist: String, blacklist
             let pfilename = passwords.clone();
             let wfilename = whitelist.clone();
             let bfilename = blacklist.clone();
+            let thistory = history.clone()
 
 
             service_fn(move |req| {
                 info!("new request to {}", req.uri());
-                routes(req, &client, pfilename.clone(), wfilename.clone(), bfilename.clone())
+                routes(req, &client, pfilename.clone(), wfilename.clone(), bfilename.clone(), thistory.clone())
             })
         };
 
