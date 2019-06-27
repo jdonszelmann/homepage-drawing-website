@@ -30,6 +30,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let root;
     let port: u16;
+    let webport: u16;
     if args.len() > 1 {
         root = args[1].to_owned();
     }else{
@@ -41,8 +42,14 @@ fn main() {
     }else{
         port = 80;
     }
+    if args.len() > 3 {
+        webport = args[3].parse().expect("Third argument should be port");
 
-    Logger::with_env_or_str("info, ws = warn, rocket = warn")
+    }else{
+        webport = 8000;
+    }
+
+    Logger::with_env_or_str("info, ws = warn")
         .log_to_file()
         .duplicate_to_stderr(Duplicate::Info)
         .directory("/logs")
@@ -51,7 +58,7 @@ fn main() {
         .unwrap();
 
     let socketaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port));
-    let webaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), port + 1));
+    let webaddress = SocketAddr::V4(SocketAddrV4::new("0.0.0.0".parse().unwrap(), webport));
     let capacity = 1024;
     let whitelist = Arc::new(Mutex::new(HashSet::new()));
     let blacklist = Arc::new(Mutex::new(HashSet::new()));
@@ -119,7 +126,7 @@ fn main() {
                 let address = match addr.parse(){
                     Ok(i) => i,
                     Err(i) => {
-                        error!("parse error: {}", i);
+                        error!("parse error: {} at line {}", i, addr);
                         continue;
                     }
                 };
@@ -134,7 +141,7 @@ fn main() {
                 let address = match addr.parse(){
                     Ok(i) => i,
                     Err(i) => {
-                        error!("parse error: {}", i);
+                        error!("parse error: {} at line {}", i, addr);
                         continue;
                     }
                 };

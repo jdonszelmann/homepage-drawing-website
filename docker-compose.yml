@@ -21,8 +21,12 @@ services:
       - web
 
     labels:
-      - traefik.frontend.rule=Host:drawserver.jonay2000.nl
-      - traefik.frontend.port=80
+      - traefik.main.frontend.rule=Host:drawserver.jonay2000.nl
+      - traefik.main.frontend.port=80
+      - traefik.main.backend.port=80
+      - traefik.api.frontend.rule=Host:api.jonay2000.nl
+      - traefik.api.frontend.port=80
+      - traefik.api.port=8000
     volumes:
       - ./server/config:/config
       - ./server/logs:/logs

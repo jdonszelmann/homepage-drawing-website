@@ -6,7 +6,7 @@ use futures::{future, Future};
 use http::header::{AUTHORIZATION,WWW_AUTHENTICATE};
 use std::fs;
 use url::Url;
-use log::error;
+use log::{error, info};
 use std::fs::OpenOptions;
 use std::io::Write;
 
@@ -220,6 +220,7 @@ pub fn main(address: SocketAddr, passwords: String, whitelist: String, blacklist
 
 
             service_fn(move |req| {
+                info!("new request to {}", req.uri());
                 routes(req, &client, pfilename.clone(), wfilename.clone(), bfilename.clone())
             })
         };
